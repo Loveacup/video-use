@@ -1,13 +1,16 @@
-"""Batch-transcribe every video in a directory with 4 parallel workers.
+"""Batch-transcribe every video in a directory, on-device.
 
-Walks <videos_dir> for common video extensions, runs ElevenLabs Scribe on
-each, writes transcripts to <videos_dir>/edit/transcripts/<name>.json.
+Walks <videos_dir> for common video extensions, runs local Qwen3-ASR +
+forced alignment on each, writes transcripts to
+<videos_dir>/edit/transcripts/<name>.json.
+
+Sequential by design: the models load once and MLX inference stays on the
+main thread; the GPU is the bottleneck, not the file count.
 
 Cached per-file: any source that already has a transcript is skipped.
 
 Usage:
     python helpers/transcribe_batch.py <videos_dir>
-    python helpers/transcribe_batch.py <videos_dir> --workers 4
     python helpers/transcribe_batch.py <videos_dir> --num-speakers 2
     python helpers/transcribe_batch.py <videos_dir> --edit-dir /custom/edit
 """
@@ -17,10 +20,9 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from transcribe import load_api_key, transcribe_one, transcript_path
+from transcribe import ISO_TO_QWEN, transcribe_one, transcript_path
 
 
 VIDEO_EXTS = {".mp4", ".MP4", ".mov", ".MOV", ".mkv", ".MKV", ".avi", ".AVI", ".m4v"}
@@ -35,7 +37,7 @@ def find_videos(videos_dir: Path) -> list[Path]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Parallel batch transcription of a videos directory")
+    ap = argparse.ArgumentParser(description="Batch on-device transcription of a videos directory")
     ap.add_argument("videos_dir", type=Path, help="Directory containing source videos")
     ap.add_argument(
         "--edit-dir",
@@ -43,18 +45,17 @@ def main() -> None:
         default=None,
         help="Edit output directory (default: <videos_dir>/edit)",
     )
-    ap.add_argument("--workers", type=int, default=4, help="Parallel workers (default: 4)")
     ap.add_argument(
         "--language",
-        type=str,
+        choices=sorted(ISO_TO_QWEN),
         default=None,
-        help="Optional ISO language code. Omit to auto-detect per file.",
+        help="ISO language code. Omit to auto-detect per file.",
     )
     ap.add_argument(
         "--num-speakers",
         type=int,
         default=None,
-        help="Optional number of speakers. Improves diarization when known.",
+        help="Number of speakers. 2+ runs pyannote diarization.",
     )
     ap.add_argument(
         "--audio-track",
@@ -84,34 +85,24 @@ def main() -> None:
         print("nothing to do")
         return
 
-    api_key = load_api_key()
-
-    print(f"transcribing {len(pending)} files with {args.workers} parallel workers")
+    print(f"transcribing {len(pending)} files")
     t0 = time.time()
 
     errors: list[tuple[Path, str]] = []
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {
-            pool.submit(
-                transcribe_one,
+    for v in pending:
+        try:
+            out = transcribe_one(
                 video=v,
                 edit_dir=edit_dir,
-                api_key=api_key,
                 language=args.language,
                 num_speakers=args.num_speakers,
                 verbose=False,
                 audio_track=args.audio_track,
-            ): v
-            for v in pending
-        }
-        for fut in as_completed(futures):
-            v = futures[fut]
-            try:
-                out = fut.result()
-                print(f"  + {v.stem}  →  {out.name}")
-            except Exception as e:
-                errors.append((v, str(e)))
-                print(f"  x {v.stem}  FAILED: {e}")
+            )
+            print(f"  + {v.stem}  →  {out.name}", flush=True)
+        except Exception as e:
+            errors.append((v, str(e)))
+            print(f"  x {v.stem}  FAILED: {e}", flush=True)
 
     dt = time.time() - t0
     print(f"\ndone in {dt:.1f}s")

@@ -423,6 +423,8 @@ def build_master_srt(edl: dict, edit_dir: Path, out_path: Path) -> None:
     - UPPERCASE text
     - Output times computed as word.start - segment_start + segment_offset
     """
+    from pack_transcripts import join_words  # same directory; lazy so render imports standalone
+
     transcripts_dir = edit_dir / "transcripts"
     sources = edl["sources"]
 
@@ -467,7 +469,7 @@ def build_master_srt(edl: dict, edit_dir: Path, out_path: Path) -> None:
             out_end = max(0.0, local_end - seg_start) + seg_offset
             if out_end <= out_start:
                 out_end = out_start + 0.4
-            text = " ".join((w.get("text") or "").strip() for w in chunk)
+            text = join_words([(w.get("text") or "").strip() for w in chunk])
             text = re.sub(r"\s+", " ", text).strip()
             # Strip trailing punctuation for cleaner uppercase look
             text = text.rstrip(",;:")
