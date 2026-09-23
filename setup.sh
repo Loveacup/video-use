@@ -37,8 +37,8 @@ step "Upstream remote"
 git -C "$REPO" remote get-url upstream >/dev/null 2>&1 || git -C "$REPO" remote add upstream "$UPSTREAM"
 git -C "$REPO" config rerere.enabled true
 
-step "Prefetch models (~3 GB first time)"
-"$REPO/.venv/bin/python" -c "from mlx_audio.stt.utils import load_model; [load_model(m) for m in ('mlx-community/Qwen3-ASR-1.7B-8bit', 'mlx-community/Qwen3-ForcedAligner-0.6B-8bit')]"
+step "Prefetch models (ASR reused from LM Studio dir if present; aligner ~1.8 GB first time)"
+(cd "$REPO" && .venv/bin/python -c "import sys; sys.path.insert(0, 'helpers'); import transcribe; print('  ASR:', transcribe.asr_model()); transcribe.load_models()")
 
 step "Self-check: transcribe + subtitle render on a synthetic clip"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT

@@ -1,4 +1,4 @@
-"""Transcribe a video on-device with Qwen3-ASR + Qwen3-ForcedAligner (MLX).
+"""Transcribe a video on-device with Qwen3-ASR + Qwen3-ForcedAligner (mlx-qwen3-asr).
 
 Extracts mono 16kHz audio via ffmpeg, transcribes it locally, aligns every
 word to the waveform, optionally diarizes with pyannote, and writes a
@@ -9,8 +9,9 @@ Scribe-shaped transcript to <edit_dir>/transcripts/<video_stem>.json:
         {"text": " ", "start": 0.40, "end": 0.52, "type": "spacing", "speaker_id": "speaker_0"},
         ...]}
 
-Nothing leaves the machine. Models download once into the Hugging Face cache.
-Requires Apple Silicon (MLX).
+Nothing leaves the machine. Same ASR runtime and weights as jz-meeting-skills:
+mlx-qwen3-asr with moona3k/mlx-qwen3-asr-1.7b-8bit, read from the LM Studio model
+directory when present (else the Hugging Face cache). Requires Apple Silicon (MLX).
 
 Cached: if the output file already exists, transcription is skipped.
 
@@ -34,18 +35,16 @@ import time
 import unicodedata
 import wave
 import warnings
-from collections import Counter
+import os
 from pathlib import Path
 
 import numpy as np
 
 
-ASR_MODEL = "mlx-community/Qwen3-ASR-1.7B-8bit"
-ALIGNER_MODEL = "mlx-community/Qwen3-ForcedAligner-0.6B-8bit"
+ASR_REPO = "moona3k/mlx-qwen3-asr-1.7b-8bit"
+ALIGNER_MODEL = "Qwen/Qwen3-ForcedAligner-0.6B"
 DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
 SAMPLE_RATE = 16000
-# Qwen3-ForcedAligner is trained on clips of up to 5 minutes; chunk well inside that.
-CHUNK_SECONDS = 180.0
 # How far past the cursor a token may sit in the ASR text before we stop trusting the match.
 PUNCT_SEARCH_WINDOW = 32
 
@@ -58,15 +57,27 @@ ISO_TO_QWEN = {
 }
 QWEN_TO_ISO = {v: k for k, v in ISO_TO_QWEN.items()}
 
-_models: dict[str, object] = {}
+_session = None
+_aligner = None
 
 
-def load_mlx_model(name: str):
+def asr_model() -> str:
+    """VIDEO_USE_ASR_MODEL, else the LM Studio copy shared with jz-meeting-skills, else the repo id."""
+    override = os.environ.get("VIDEO_USE_ASR_MODEL")
+    if override:
+        return override
+    local = Path.home() / ".lmstudio/models" / ASR_REPO
+    return str(local) if (local / "weights.safetensors").is_file() else ASR_REPO
+
+
+def load_models():
     """Load once per process; batch mode reuses the same weights for every file."""
-    if name not in _models:
-        from mlx_audio.stt.utils import load_model
-        _models[name] = load_model(name)
-    return _models[name]
+    global _session, _aligner
+    if _session is None:
+        from mlx_qwen3_asr import ForcedAligner, Session
+        _session = Session(model=asr_model())
+        _aligner = ForcedAligner(ALIGNER_MODEL)
+    return _session, _aligner
 
 
 def count_audio_tracks(video_path: Path) -> int:
@@ -113,7 +124,7 @@ def attach_punctuation(text: str, items) -> list[dict]:
     units: list[dict] = []
     cursor = 0
     for it in items:
-        core = it.text
+        core = it["text"]
         suffix = ""
         pos = text.find(core, cursor)
         if 0 <= pos <= cursor + PUNCT_SEARCH_WINDOW:
@@ -123,7 +134,7 @@ def attach_punctuation(text: str, items) -> list[dict]:
             suffix = text[end:j]
             cursor = j
         units.append({"core": core, "text": core + suffix,
-                      "start": it.start_time, "end": it.end_time})
+                      "start": it["start"], "end": it["end"]})
     return units
 
 
@@ -162,40 +173,28 @@ def group_cjk(units: list[dict]) -> list[dict]:
 
 
 def transcribe_audio(audio: np.ndarray, language: str | None) -> tuple[list[dict], str | None, str]:
-    """ASR + forced alignment, chunked at low-energy points.
+    """ASR + forced alignment. The library chunks at low-energy points (≤30s) and aligns
+    each chunk, so segments come back per aligner token with absolute seconds.
 
-    Returns (words, iso_language, full_text). Words carry absolute start/end seconds.
+    Returns (words, iso_language, full_text).
     """
-    from mlx_audio.stt.models.qwen3_asr.qwen3_asr import split_audio_into_chunks
-
-    asr = load_mlx_model(ASR_MODEL)
-    aligner = load_mlx_model(ALIGNER_MODEL)
-    forced = ISO_TO_QWEN[language] if language else None
-
-    words: list[dict] = []
-    texts: list[str] = []
-    detected: Counter[str] = Counter()
-    for chunk, offset in split_audio_into_chunks(audio, sr=SAMPLE_RATE, chunk_duration=CHUNK_SECONDS):
-        out = asr.generate(chunk, language=forced)
-        text = out.text.strip()
-        if not text:
-            continue
-        lang = forced or (out.language[0] if out.language else None)
-        if lang not in QWEN_TO_ISO:
-            raise RuntimeError(
-                f"ASR detected language {lang!r} at {offset:.0f}s, which the forced aligner "
-                f"does not support - pass --language with one of {', '.join(ISO_TO_QWEN)}"
-            )
-        aligned = aligner.generate(chunk, text=text, language=lang)
-        for w in group_cjk(attach_punctuation(text, aligned)):
-            w["start"] = round(w["start"] + offset, 3)
-            w["end"] = round(w["end"] + offset, 3)
-            words.append(w)
-        texts.append(text)
-        detected[lang] += len(text)
-
-    iso = QWEN_TO_ISO[detected.most_common(1)[0][0]] if detected else language
-    return words, iso, " ".join(texts)
+    session, aligner = load_models()
+    result = session.transcribe(audio, language=ISO_TO_QWEN[language] if language else None,
+                                return_timestamps=True, forced_aligner=aligner)
+    text = result.text.strip()
+    if not text:
+        return [], language, ""
+    lang = result.language if isinstance(result.language, str) else None
+    if language is None and lang not in QWEN_TO_ISO:
+        raise RuntimeError(
+            f"ASR detected language {lang!r}, which the forced aligner does not support - "
+            f"pass --language with one of {', '.join(ISO_TO_QWEN)}"
+        )
+    words = group_cjk(attach_punctuation(text, result.segments or []))
+    for w in words:
+        w["start"] = round(float(w["start"]), 3)
+        w["end"] = round(float(w["end"]), 3)
+    return words, language or QWEN_TO_ISO[lang], text
 
 
 def diarize(audio: np.ndarray, num_speakers: int) -> list[tuple[float, float, str]]:

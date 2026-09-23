@@ -5,7 +5,7 @@ description = "Conversation-driven video editor skill for Claude Code"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
-    "mlx-audio>=0.3.1",
+    "mlx-qwen3-asr[aligner]>=0.4.3,<0.5",
     "jieba",
     "pyannote.audio>=4.0",
     "librosa",

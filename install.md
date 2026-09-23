@@ -45,7 +45,7 @@ If the repo is already there, `git pull --ff-only` and continue.
 uv sync
 ```
 
-`pyproject.toml` pulls `mlx-audio` (ASR + forced alignment), `jieba` (CJK word grouping), `pyannote.audio` (diarization), `librosa`, `matplotlib`, `pillow`, `numpy`. No console scripts — helpers are invoked as `.venv/bin/python helpers/<name>.py`.
+`pyproject.toml` pulls `mlx-qwen3-asr[aligner]` (ASR + forced alignment, same runtime as jz-meeting-skills), `jieba` (CJK word grouping), `pyannote.audio` (diarization), `librosa`, `matplotlib`, `pillow`, `numpy`. No console scripts — helpers are invoked as `.venv/bin/python helpers/<name>.py`.
 
 ### 3. Install ffmpeg (+ optional yt-dlp)
 
@@ -90,10 +90,10 @@ If you can't tell which agent you're in, ask the user once: "which agent am I ru
 
 ### 5. Prefetch the transcription models
 
-Transcription runs entirely on-device; nothing is uploaded and there is no API key. The first run downloads the models (~3 GB) into the Hugging Face cache. Fetch them now so the user's first clip doesn't stall:
+Transcription runs entirely on-device; nothing is uploaded and there is no API key. The ASR model `moona3k/mlx-qwen3-asr-1.7b-8bit` (~2.2 GB) is used from `~/.lmstudio/models/` if already there (shared with jz-meeting-skills), else from the Hugging Face cache; the aligner `Qwen/Qwen3-ForcedAligner-0.6B` (~1.8 GB) comes from the Hugging Face cache. Fetch them now so the user's first clip doesn't stall:
 
 ```bash
-~/Developer/video-use/.venv/bin/python -c "from mlx_audio.stt.utils import load_model; [load_model(m) for m in ('mlx-community/Qwen3-ASR-1.7B-8bit', 'mlx-community/Qwen3-ForcedAligner-0.6B-8bit')]"
+cd ~/Developer/video-use && .venv/bin/python -c "import sys; sys.path.insert(0, 'helpers'); import transcribe; transcribe.load_models()"
 ```
 
 Diarization (`--num-speakers 2+`) additionally loads `pyannote/speaker-diarization-community-1` on first use.

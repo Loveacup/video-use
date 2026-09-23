@@ -61,7 +61,7 @@ First-time install lives in `install.md` (clone, deps, ffmpeg, skill registratio
 
 - `ffmpeg` + `ffprobe` on PATH. Burning subtitles needs an ffmpeg built with libass (`ffmpeg -filters | grep subtitles`).
 - Python deps installed (`uv sync` inside the repo). **Run every helper with the repo's venv interpreter**: `<skill_dir>/.venv/bin/python <skill_dir>/helpers/<name>.py`. System `python3` lacks the ASR deps.
-- Transcription is fully on-device (Qwen3-ASR + Qwen3-ForcedAligner on MLX, Apple Silicon only). No API key; nothing is uploaded. First run downloads ~3 GB of models into the Hugging Face cache.
+- Transcription is fully on-device (Qwen3-ASR 1.7B 8-bit + Qwen3-ForcedAligner via `mlx-qwen3-asr`, Apple Silicon only) — the same runtime and weights as jz-meeting-skills. No API key; nothing is uploaded. The ASR model is read from `~/.lmstudio/models/moona3k/mlx-qwen3-asr-1.7b-8bit` when present (override with `VIDEO_USE_ASR_MODEL`); otherwise models download once into the Hugging Face cache (~4 GB).
 - Node.js + npm available if the session needs HyperFrames or Remotion slots. HyperFrames currently requires Node.js 22+.
 - `yt-dlp`, HyperFrames, Remotion, Manim installed only on first use.
 - First-use animation setup happens inside the slot directory, never at the video-use repo root. HyperFrames can be invoked with `npx --yes hyperframes ...`; Remotion can be scaffolded with `npx create-video@latest` or installed as a project-local dependency before using its `remotion render` command.
