@@ -52,8 +52,8 @@ uv sync
 `ffmpeg` and `ffprobe` are hard requirements. `yt-dlp` is only needed if the user wants to pull sources from URLs. Animation engines such as HyperFrames, Remotion, and Manim are installed lazily the first time a project actually needs them.
 
 ```bash
-# macOS
-command -v ffmpeg >/dev/null || brew install ffmpeg
+# macOS — Homebrew's plain `ffmpeg` has no libass, so subtitle burning fails. Use ffmpeg-full:
+ffmpeg -hide_banner -filters 2>&1 | grep -q " subtitles " || { brew install ffmpeg-full && brew unlink ffmpeg 2>/dev/null; brew link --force --overwrite ffmpeg-full; }
 command -v yt-dlp >/dev/null || brew install yt-dlp     # optional
 
 # Debian / Ubuntu

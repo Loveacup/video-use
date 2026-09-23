@@ -60,7 +60,7 @@ ln -sfn ~/Developer/video-use ~/.claude/skills/video-use        # Claude Code
 # 2. Install deps
 cd ~/Developer/video-use
 uv sync
-brew install ffmpeg             # required; subtitle burning needs a libass build
+brew install ffmpeg-full && brew link --force --overwrite ffmpeg-full   # required; plain `ffmpeg` lacks libass (subtitles)
 brew install yt-dlp             # optional, for downloading online sources
 ```
 
