@@ -42,11 +42,15 @@ step "Prefetch models (~3 GB first time)"
 
 step "Self-check: transcribe + subtitle render on a synthetic clip"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-say -v Tingting -o "$tmp/a.aiff" "大家好，今天我们来测试一下视频剪辑。"
+# Chinese voices are optional downloads on macOS; fall back to any English voice.
+voice="$(say -v '?' | awk '$2 ~ /^zh_/ {print $1; exit}')"
+if [[ -n "$voice" ]]; then lang=zh; line="大家好，今天我们来测试一下视频剪辑。"
+else voice="$(say -v '?' | awk '$2 == "en_US" {print $1; exit}')"; lang=en; line="Hello, today we are testing video editing."; fi
+say ${voice:+-v "$voice"} -o "$tmp/a.aiff" "$line"
 ffmpeg -loglevel error -f lavfi -i color=c=black:s=640x360:r=30 -i "$tmp/a.aiff" -shortest \
   -c:v libx264 -pix_fmt yuv420p -c:a aac "$tmp/take.mp4"
 PY="$REPO/.venv/bin/python"
-"$PY" "$REPO/helpers/transcribe.py" "$tmp/take.mp4" --language zh 2>&1 | grep -v Fetching
+"$PY" "$REPO/helpers/transcribe.py" "$tmp/take.mp4" --language "$lang" 2>&1 | grep -v Fetching
 "$PY" "$REPO/helpers/pack_transcripts.py" --edit-dir "$tmp/edit" >/dev/null
 end="$("$PY" -c "import json,sys;print(json.load(open(sys.argv[1]))['words'][-1]['end'])" "$tmp/edit/transcripts/take.json")"
 printf '{"version":1,"sources":{"take":"%s"},"ranges":[{"source":"take","start":0,"end":%s}]}' "$tmp/take.mp4" "$end" > "$tmp/edit/edl.json"
