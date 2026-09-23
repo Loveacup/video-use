@@ -47,6 +47,14 @@ And in the session:
 
 It inventories the sources, proposes a strategy, waits for your OK, then produces `edit/final.mp4` next to your sources. All outputs live in `<videos_dir>/edit/` — the skill directory stays clean.
 
+## One-shot setup (this fork)
+
+```bash
+git clone https://github.com/Loveacup/video-use ~/Developer/video-use && ~/Developer/video-use/setup.sh
+```
+
+Installs deps, ffmpeg-full, registers the skill for Claude Code / Codex / omp, prefetches the ASR models, and self-checks with a synthetic Chinese clip. Idempotent.
+
 ## Manual install
 
 If you'd rather do it by hand:

@@ -121,7 +121,7 @@ Tell the user, in one short message:
 
 ## Keeping the skill current
 
-- `cd ~/Developer/video-use && git pull --rebase origin main && uv sync` pulls the latest code. The symlink auto-picks it up on the next run.
+- `cd ~/Developer/video-use && git pull --rebase upstream main && uv sync && git push --force-with-lease origin local-asr` pulls upstream, replays the local commits, and publishes to the fork (`origin` = Loveacup/video-use, `upstream` = browser-use/video-use; `setup.sh` adds `upstream` and enables `rerere`). The symlink auto-picks it up on the next run.
 - This install carries local commits (on-device ASR on branch `local-asr`), so `--ff-only` would fail. If upstream touched `helpers/transcribe.py`, the rebase conflicts there — keep the local backend and port any upstream fixes into it.
 
 ## Cold-start reminders
