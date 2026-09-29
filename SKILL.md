@@ -96,8 +96,8 @@ For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a su
 
    Also sample: first 2s, last 2s, and 2–3 mid-points — check grade consistency, subtitle readability, overall coherence. Run `ffprobe` on the output to verify duration matches the EDL expectation.
 
-   If anything fails: fix → re-render → re-eval. **Cap at 3 self-eval passes** — if issues remain after 3, flag them to the user rather than looping forever. Only present the preview once the self-eval passes.
 8. **Iterate + persist.** Natural-language feedback, re-plan, re-render. Never re-transcribe. Final render on confirmation. Append to `project.md`.
+9. **Leave a de-identified run record.** After the final render, run `<skill_dir>/.venv/bin/python <skill_dir>/helpers/run_record.py <edit_dir> --note "<one-paragraph friction note>"`. The record is built from existing artifacts; never add transcript text, filenames, or paths to the note. If the helper prints `OPTIMIZATION_DUE`, tell the user in one sentence that an optimization round is available; never start optimizing automatically.
 
 ## Cut craft (techniques)
 
